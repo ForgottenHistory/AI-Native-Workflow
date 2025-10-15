@@ -6,7 +6,6 @@ Port: 5001
 Role: Proposes architecture and tech stack based on requirements
 """
 
-import asyncio
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
@@ -191,19 +190,11 @@ This is Turn {request.conversation_turn + 1} of the dialogue."""
         return tech_stack
 
 
-async def main():
+def main():
     """Run the Architect agent server."""
     server = ArchitectServer()
-
-    # Initialize client on startup
-    await server.startup()
-
-    # Run server (this blocks)
-    try:
-        server.run()
-    finally:
-        await server.shutdown()
+    server.run()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

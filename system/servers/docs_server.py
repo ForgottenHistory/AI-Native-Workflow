@@ -6,7 +6,6 @@ Port: 5003
 Role: Synthesizes structured documentation from architectural dialogue
 """
 
-import asyncio
 from pathlib import Path
 from typing import List, Dict, Any
 from pydantic import BaseModel
@@ -132,19 +131,11 @@ OUTPUT the complete CONSTRAINTS.md content as markdown. Do NOT use tools."""
         return '\n'.join(formatted)
 
 
-async def main():
+def main():
     """Run the Docs agent server."""
     server = DocsServer()
-
-    # Initialize client on startup
-    await server.startup()
-
-    # Run server (this blocks)
-    try:
-        server.run()
-    finally:
-        await server.shutdown()
+    server.run()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

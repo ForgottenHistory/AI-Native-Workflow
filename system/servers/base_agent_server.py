@@ -49,6 +49,15 @@ class BaseAgentServer:
         # Setup routes
         self._setup_routes()
 
+        # Setup startup/shutdown events
+        @self.app.on_event("startup")
+        async def startup_event():
+            await self.startup()
+
+        @self.app.on_event("shutdown")
+        async def shutdown_event():
+            await self.shutdown()
+
     def _setup_routes(self):
         """Setup common routes for all agent servers."""
 

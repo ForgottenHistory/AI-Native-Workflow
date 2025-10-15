@@ -6,7 +6,6 @@ Port: 5002
 Role: Evaluates architecture proposals and implements code
 """
 
-import asyncio
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
@@ -251,19 +250,11 @@ The code will be written to: {request.workspace_path}/code/"""
         return files[:20]  # Limit to 20 files
 
 
-async def main():
+def main():
     """Run the Coder agent server."""
     server = CoderServer()
-
-    # Initialize client on startup
-    await server.startup()
-
-    # Run server (this blocks)
-    try:
-        server.run()
-    finally:
-        await server.shutdown()
+    server.run()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
