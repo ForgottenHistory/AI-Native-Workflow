@@ -8,7 +8,10 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     AssistantMessage,
     TextBlock,
-    ResultMessage
+    ResultMessage,
+    PermissionResultAllow,
+    PermissionResultDeny,
+    ToolPermissionContext
 )
 
 
@@ -32,6 +35,48 @@ def strip_emojis(text: str) -> str:
         flags=re.UNICODE
     )
     return emoji_pattern.sub('', text)
+
+
+async def allow_code_writes(
+    tool_name: str,
+    input_data: dict,
+    context: ToolPermissionContext,
+    workspace_path: str = None
+) -> PermissionResultAllow | PermissionResultDeny:
+    """
+    Permission callback for implementation agent.
+
+    Allows Write/Edit tools only to the code/ directory within the workspace.
+    """
+    # Always allow read operations
+    if tool_name in ["Read", "Glob", "Grep"]:
+        return PermissionResultAllow()
+
+    # Allow writes only to code/ directory
+    if tool_name in ["Write", "Edit"]:
+        file_path = input_data.get("file_path", "")
+
+        # Check if path is within allowed code directory
+        if workspace_path:
+            # Path should start with workspace_path/code/
+            code_prefix = f"{workspace_path}/code/"
+            code_prefix_win = f"{workspace_path}\\code\\"
+            if file_path.startswith(code_prefix) or file_path.startswith(code_prefix_win):
+                return PermissionResultAllow()
+        else:
+            # Fallback: simple check for code/ in path
+            if "/code/" in file_path or "\\code\\" in file_path or file_path.startswith("code/"):
+                return PermissionResultAllow()
+
+        # Deny everything else
+        return PermissionResultDeny(
+            message=f"Can only write to code/ directory. Attempted: {file_path}"
+        )
+
+    # Deny all other tools
+    return PermissionResultDeny(
+        message=f"Tool {tool_name} not allowed"
+    )
 
 
 async def query_agent(client: ClaudeSDKClient, agent_name: str, prompt: str, verbose: bool = True) -> str:

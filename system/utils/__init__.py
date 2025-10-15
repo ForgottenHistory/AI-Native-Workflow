@@ -3,6 +3,7 @@
 from .agent_utils import (
     strip_emojis,
     query_agent,
+    allow_code_writes,
     create_architect_agent,
     create_coder_agent,
     create_docs_agent,
@@ -12,6 +13,7 @@ from .agent_utils import (
 __all__ = [
     'strip_emojis',
     'query_agent',
+    'allow_code_writes',
     'create_architect_agent',
     'create_coder_agent',
     'create_docs_agent',

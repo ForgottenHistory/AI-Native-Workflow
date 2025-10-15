@@ -520,9 +520,132 @@ IMPORTANT: Do NOT use any tools. Do NOT try to write files. Just OUTPUT the mark
 
     async def _execute_implementation(self, action: OrchestratorAction, state: ProjectState):
         """Run Coder agent to implement from architecture."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent))
+        from utils.agent_utils import query_agent
+        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, PermissionResultAllow, PermissionResultDeny, ToolPermissionContext
+
         print("[IMPLEMENTATION] Generating code...")
-        # TODO: Implement code generation (similar to test_implementation.py)
-        pass
+
+        # Load architecture and constraints
+        architecture_path = action.inputs.get("architecture_path")
+        arch_file = architecture_path / "ARCHITECTURE.md"
+        constraints_file = architecture_path / "CONSTRAINTS.md"
+
+        if not arch_file.exists() or not constraints_file.exists():
+            print(f"[ERROR] Missing architecture docs!")
+            return
+
+        architecture = arch_file.read_text(encoding='utf-8')
+        constraints = constraints_file.read_text(encoding='utf-8')
+
+        print(f"[OK] Loaded ARCHITECTURE.md ({len(architecture)} chars)")
+        print(f"[OK] Loaded CONSTRAINTS.md ({len(constraints)} chars)")
+
+        # Create permission callback that allows writes to this workspace's code/ dir
+        workspace_str = str(state.workspace_path)
+        async def workspace_code_writes(
+            tool_name: str,
+            input_data: dict,
+            context: ToolPermissionContext
+        ) -> PermissionResultAllow | PermissionResultDeny:
+            """Allow writes only to this workspace's code/ directory."""
+            # Always allow read operations
+            if tool_name in ["Read", "Glob", "Grep"]:
+                return PermissionResultAllow()
+
+            # Allow writes to code/ directory
+            if tool_name in ["Write", "Edit"]:
+                file_path = input_data.get("file_path", "")
+
+                # Check various path formats
+                code_dir = str(state.workspace_path / "code")
+                if (file_path.startswith(code_dir) or
+                    file_path.startswith(f"{workspace_str}/code/") or
+                    file_path.startswith(f"{workspace_str}\\code\\") or
+                    "\\code\\" in file_path or "/code/" in file_path):
+                    return PermissionResultAllow()
+
+                return PermissionResultDeny(
+                    message=f"Can only write to {code_dir}/"
+                )
+
+            return PermissionResultDeny(message=f"Tool {tool_name} not allowed")
+
+        # Initialize implementation Coder agent with permissions
+        impl_prompt = (
+            "You are an implementation engineer. You receive architecture documentation and constraints, "
+            "and you implement working code that follows the specifications exactly. "
+            "Use the Write tool to create files. "
+            "Follow all constraints exactly. Use best practices for the chosen tech stack."
+        )
+
+        impl_options = ClaudeAgentOptions(
+            system_prompt=impl_prompt,
+            max_turns=20,  # Allow many tool uses for implementation
+            can_use_tool=workspace_code_writes,
+            cwd=str(state.workspace_path)
+        )
+
+        print("[*] Initializing implementation Coder agent...")
+        impl_client = ClaudeSDKClient(options=impl_options)
+        await impl_client.connect()
+        print("[OK] Implementation Coder connected\n")
+
+        try:
+            # Ask agent to implement
+            print("[*] Asking Coder to implement from architecture docs...")
+            implementation_response = await query_agent(
+                impl_client,
+                "CODER (Implementation)",
+                f"""You have full architecture and constraints for this project:
+
+ARCHITECTURE.md:
+{architecture}
+
+CONSTRAINTS.md:
+{constraints}
+
+YOUR TASK:
+Implement this project following the architecture and constraints exactly.
+
+REQUIREMENTS:
+- Create ALL files needed for a working implementation in the code/ directory
+- Follow CONSTRAINTS.md exactly
+- Use exact tech stack from ARCHITECTURE.md
+- Include all necessary config files, source files, components, etc.
+- Make autonomous decisions about structure and implementation approach
+
+IMPORTANT:
+- Use the Write tool to create each file
+- File paths should be: {state.workspace_path}/code/filename
+- You decide what files to create and in what order
+- Implement the complete, working project
+
+Begin implementation. Create all project files.""",
+                verbose=True
+            )
+
+            # Save implementation log
+            logs_dir = state.workspace_path / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_file = logs_dir / f"implementation_{timestamp}.md"
+
+            with open(log_file, 'w', encoding='utf-8') as f:
+                f.write("# IMPLEMENTATION LOG\n\n")
+                f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"**Agent:** Implementation Coder\n")
+                f.write(f"**Project:** {state.project_name}\n")
+                f.write(f"**Method:** Autonomous implementation from architecture docs\n\n")
+                f.write("---\n\n")
+                f.write("## Agent Response\n\n")
+                f.write(f"{implementation_response}\n\n")
+
+            print(f"\n[SAVE] Implementation log: {log_file.relative_to(state.workspace_path)}")
+
+        finally:
+            await impl_client.disconnect()
 
     async def _execute_audit(self, action: OrchestratorAction, state: ProjectState):
         """Run Audit agent to validate constraints."""
